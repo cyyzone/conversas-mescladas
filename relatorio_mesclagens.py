@@ -58,10 +58,22 @@ def api_search(token, payload):
     return response.json()
 
 
-def list_conversations(token, since_timestamp=None, until_timestamp=None):
+def list_conversations(
+    token, since_timestamp=None, until_timestamp=None, progress_callback=None
+):
     conversations = []
     starting_after = None
+    page_number = 0
+    total_count = None
     while True:
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "list",
+                    "message": f"Consultando página {page_number + 1} da API...",
+                    "progress": None,
+                }
+            )
         filters = []
         if since_timestamp is not None:
             filters.append({
@@ -94,9 +106,49 @@ def list_conversations(token, since_timestamp=None, until_timestamp=None):
             result = api_get(token, "/conversations", params=params)
 
         conversations.extend(result.get("conversations", []))
+        page_number += 1
+        response_total = result.get("total_count")
+        if response_total is not None:
+            try:
+                total_count = int(response_total)
+            except (TypeError, ValueError):
+                total_count = None
+        if progress_callback:
+            progress = (
+                min(len(conversations) / total_count, 1.0) * 0.15
+                if total_count
+                else None
+            )
+            total_message = f" de {total_count}" if total_count is not None else ""
+            count_note = (
+                ""
+                if total_count is not None
+                else " (total ainda não informado pela API)"
+            )
+            progress_callback(
+                {
+                    "stage": "list",
+                    "message": (
+                        f"Página {page_number}: recebidas {len(conversations)}"
+                        f"{total_message} conversas{count_note}."
+                    ),
+                    "progress": progress,
+                }
+            )
         next_page = (result.get("pages") or {}).get("next") or {}
         starting_after = next_page.get("starting_after")
         if not starting_after:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "listed",
+                        "message": (
+                            f"Busca inicial concluída: {len(conversations)} "
+                            "conversas recebidas da API."
+                        ),
+                        "progress": 0.15,
+                    }
+                )
             return conversations
 
 
@@ -141,7 +193,15 @@ def is_merged_secondary(summary):
     return value is True or (isinstance(value, str) and value.casefold() == "true")
 
 
-def build_report(token, since_timestamp=None, until_timestamp=None):
+def build_report(
+    token, since_timestamp=None, until_timestamp=None, progress_callback=None
+):
+    def report_progress(stage, message, progress=None):
+        if progress_callback:
+            progress_callback(
+                {"stage": stage, "message": message, "progress": progress}
+            )
+
     search_since_timestamp = (
         max(0, since_timestamp - PRIMARY_UPDATE_GRACE_SECONDS)
         if since_timestamp is not None
@@ -152,8 +212,12 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
         if until_timestamp is not None
         else None
     )
+    report_progress("list", "Iniciando a busca de conversas na API.")
     summaries = list_conversations(
-        token, search_since_timestamp, search_until_timestamp
+        token,
+        search_since_timestamp,
+        search_until_timestamp,
+        progress_callback=progress_callback,
     )
     summaries_by_id = {
         str(summary["id"]): summary
@@ -171,7 +235,13 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
         for contact_id in conversation_contact_ids(detail):
             details_by_contact.setdefault(contact_id, set()).add(conversation_id)
 
-    def fetch_details(conversation_ids, index_contacts=True):
+    def fetch_details(
+        conversation_ids,
+        index_contacts=True,
+        progress_start=None,
+        progress_end=None,
+        stage="details",
+    ):
         missing_ids = [
             conversation_id
             for conversation_id in conversation_ids
@@ -179,6 +249,12 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
         ]
         if not missing_ids:
             return
+
+        stage_label = "secundárias" if stage == "secondary_details" else "candidatas"
+        report_progress(
+            stage,
+            f"Solicitando detalhes de {len(missing_ids)} conversas {stage_label}...",
+        )
 
         def fetch_detail(conversation_id):
             if not hasattr(THREAD_LOCAL, "session"):
@@ -194,11 +270,22 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
                 executor.submit(fetch_detail, conversation_id)
                 for conversation_id in missing_ids
             ]
-            for future in as_completed(futures):
+            for completed, future in enumerate(as_completed(futures), start=1):
                 conversation_id, detail = future.result()
                 details[conversation_id] = detail
                 if index_contacts:
                     index_details(conversation_id, detail)
+                progress = None
+                if progress_start is not None and progress_end is not None:
+                    progress = progress_start + (
+                        (progress_end - progress_start) * completed / len(futures)
+                    )
+                report_progress(
+                    stage,
+                    f"Detalhes de {stage_label} carregados: "
+                    f"{completed} de {len(futures)}.",
+                    progress,
+                )
 
     def event_is_in_range(event_time):
         return (
@@ -217,13 +304,43 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
         for summary in secondary_summaries
         if summary.get("id") is not None and str(summary["id"])
     }
-    fetch_details(pending_secondary_ids, index_contacts=False)
+    report_progress(
+        "secondaries",
+        f"{len(secondary_summaries)} conversas secundárias identificadas; "
+        "carregando detalhes.",
+        0.15,
+    )
+    fetch_details(
+        pending_secondary_ids,
+        index_contacts=False,
+        progress_start=0.15,
+        progress_end=0.30,
+        stage="secondary_details",
+    )
+    if not secondary_summaries:
+        report_progress(
+            "complete",
+            "Nenhuma conversa secundária mesclada foi localizada.",
+            1.0,
+        )
+        return []
 
-    for secondary_summary in secondary_summaries:
+    for secondary_index, secondary_summary in enumerate(
+        secondary_summaries, start=1
+    ):
+        secondary_progress_end = 0.30 + (
+            0.65 * secondary_index / len(secondary_summaries)
+        )
         secondary_id = str(secondary_summary.get("id", ""))
         pending_secondary_ids.discard(secondary_id)
         secondary = details.get(secondary_id)
         if not secondary:
+            report_progress(
+                "matching",
+                f"Secundária {secondary_index} de {len(secondary_summaries)} "
+                "sem detalhes disponíveis; continuando.",
+                secondary_progress_end,
+            )
             continue
         index_details(secondary_id, secondary)
         contact_ids = conversation_contact_ids(secondary)
@@ -258,6 +375,12 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
                 for primary_id in candidate_ids
                 if primary_id in summaries_by_id
             }
+            report_progress(
+                "matching",
+                f"Secundária {secondary_index} de {len(secondary_summaries)}: "
+                f"{len(candidate_summaries)} conversas candidatas para verificar; "
+                f"{len(rows)} pares confirmados até agora.",
+            )
             fetch_details(candidate_summaries)
 
             candidate_primary_ids = set()
@@ -306,6 +429,18 @@ def build_report(token, since_timestamp=None, until_timestamp=None):
                 "mesclada_em_utc": timestamp_to_iso(secondary_event_time),
             }
 
+        report_progress(
+            "matching",
+            f"Analisadas {secondary_index} de {len(secondary_summaries)} "
+            f"secundárias; {len(rows)} pares principal/secundária confirmados.",
+            secondary_progress_end,
+        )
+
+    report_progress(
+        "complete",
+        f"Consulta concluída: {len(rows)} pares principal/secundária localizados.",
+        1.0,
+    )
     return list(rows.values())
 
 

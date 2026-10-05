@@ -273,6 +273,54 @@ if start_date > end_date:
     st.error("A data inicial não pode ser posterior à data final.")
     st.stop()
 
+progress_log = st.session_state.setdefault("report_progress_log", [])
+progress_value = st.session_state.get("report_progress", 0.0)
+with st.expander("Andamento da consulta", expanded=update_report):
+    progress_bar = st.progress(
+        progress_value,
+        text=st.session_state.get(
+            "report_progress_text",
+            "Aguardando clique em Atualizar relatório.",
+        ),
+    )
+    progress_status = st.empty()
+    progress_history = st.empty()
+    if progress_log:
+        progress_history.markdown(
+            "\n".join(f"- {entry}" for entry in progress_log[-20:])
+        )
+    else:
+        progress_history.caption("O histórico da consulta aparecerá aqui.")
+
+
+def on_report_progress(event):
+    message = event["message"]
+    progress_log = st.session_state["report_progress_log"]
+    progress_log.append(f"{datetime.now():%H:%M:%S} — {message}")
+    del progress_log[:-20]
+
+    progress = event.get("progress")
+    if progress is not None:
+        progress = min(max(float(progress), 0.0), 1.0)
+        st.session_state["report_progress"] = progress
+        st.session_state["report_progress_text"] = (
+            f"{progress:.0%} — {message}"
+        )
+        progress_bar.progress(
+            progress,
+            text=st.session_state["report_progress_text"],
+        )
+    else:
+        progress_bar.progress(
+            st.session_state.get("report_progress", 0.0),
+            text=message,
+        )
+    progress_status.info(message)
+    progress_history.markdown(
+        "\n".join(f"- {entry}" for entry in progress_log)
+    )
+
+
 if update_report:
     if not token and not CSV_PATH.exists():
         st.error(
@@ -281,21 +329,64 @@ if update_report:
         )
         st.stop()
 
+    st.session_state["report_progress"] = 0.0
+    st.session_state["report_progress_text"] = "Iniciando a consulta..."
+    st.session_state["report_progress_log"] = []
+    progress_bar.progress(0.0, text="Iniciando a consulta...")
+    progress_status.info("Iniciando a consulta.")
+    progress_history.caption("Preparando a busca...")
+
     try:
         if token:
             since_timestamp, until_timestamp = local_day_bounds(start_date, end_date)
             with st.spinner("Consultando as mesclagens no Intercom..."):
                 st.session_state["report_rows"] = build_report(
-                    token, since_timestamp, until_timestamp
+                    token,
+                    since_timestamp,
+                    until_timestamp,
+                    progress_callback=on_report_progress,
                 )
             st.session_state["report_source"] = "API do Intercom"
         else:
+            on_report_progress(
+                {
+                    "message": "Lendo as mesclagens do CSV local.",
+                    "progress": 0.2,
+                }
+            )
             st.session_state["report_rows"] = filter_csv_rows(start_date, end_date)
             st.session_state["report_source"] = str(CSV_PATH.name)
+            on_report_progress(
+                {
+                    "message": (
+                        f"Leitura concluída: {len(st.session_state['report_rows'])} "
+                        "mesclagens no CSV."
+                    ),
+                    "progress": 1.0,
+                }
+            )
 
         st.session_state["report_period"] = (start_date, end_date)
+        st.session_state["report_progress"] = 1.0
+        st.session_state["report_progress_text"] = (
+            f"100% — Consulta concluída: "
+            f"{len(st.session_state['report_rows'])} pares localizados."
+        )
+        progress_bar.progress(
+            1.0,
+            text=st.session_state["report_progress_text"],
+        )
+        progress_status.success(st.session_state["report_progress_text"])
     except RequestException as error:
-        st.error(f"Falha ao consultar a API do Intercom: {error}")
+        error_message = f"Falha ao consultar a API do Intercom: {error}"
+        st.session_state["report_progress_text"] = error_message
+        progress_status.error(error_message)
+        progress_log = st.session_state["report_progress_log"]
+        progress_log.append(f"{datetime.now():%H:%M:%S} — {error_message}")
+        del progress_log[:-20]
+        progress_history.markdown(
+            "\n".join(f"- {entry}" for entry in progress_log[-20:])
+        )
         st.stop()
 
 if "report_rows" not in st.session_state:

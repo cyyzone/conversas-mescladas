@@ -43,3 +43,8 @@ links das conversas no formato `/inbox/admin/{admin_id}/conversation/{conversati
 
 A consulta só é executada quando **Atualizar relatório** é clicado. Alterar o
 período não inicia uma busca automaticamente.
+
+Durante a consulta, o painel mostra a etapa atual, as conversas e candidatas
+analisadas, os pares localizados, uma barra de progresso e o histórico das
+últimas etapas. Quando a API não informa o total de conversas, o painel mostra
+a contagem recebida por página e não inventa uma porcentagem para essa fase.
