@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+conversas_mescladas.csv
+streamlit.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/

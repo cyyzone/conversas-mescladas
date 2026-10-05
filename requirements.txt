@@ -1,0 +1,7 @@
+Flask
+requests
+python-dotenv
+streamlit
+pandas
+altair
+openpyxl
