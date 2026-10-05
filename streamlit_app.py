@@ -225,7 +225,12 @@ def make_excel_file(table):
 
 
 def donut_chart(data, label_field, title):
-    chart = (
+    chart_data = data.assign(
+        quantidade_label=data["quantidade"].map(
+            lambda value: f"{int(value):,}".replace(",", ".")
+        )
+    )
+    donut = (
         alt.Chart(data)
         .mark_arc(innerRadius=75, stroke="white", strokeWidth=2)
         .encode(
@@ -241,9 +246,44 @@ def donut_chart(data, label_field, title):
                 alt.Tooltip("percentual:Q", title="Percentual", format=".1f"),
             ],
         )
+    )
+    labels = (
+        alt.Chart(chart_data)
+        .transform_filter(alt.datum.percentual >= 5)
+        .mark_text(radius=105, color="white", fontWeight="bold", size=12)
+        .encode(
+            theta=alt.Theta("quantidade:Q", stack=True),
+            text="quantidade_label:N",
+            tooltip=[
+                alt.Tooltip(f"{label_field}:N", title=title),
+                alt.Tooltip("quantidade:Q", title="Quantidade"),
+            ],
+        )
+    )
+    total = int(data["quantidade"].sum())
+    center_total = pd.DataFrame(
+        {"total_label": [f"{total:,}".replace(",", ".")]}
+    )
+    center_label = (
+        alt.Chart(center_total)
+        .mark_text(radius=0, dy=-5, size=24, fontWeight="bold")
+        .encode(
+            theta=alt.value(0),
+            text="total_label:N",
+        )
+    )
+    center_caption = (
+        alt.Chart(pd.DataFrame({"label": ["conversas"]}))
+        .mark_text(radius=0, dy=18, size=11, color="#666")
+        .encode(
+            theta=alt.value(0),
+            text="label:N",
+        )
+    )
+    return (
+        alt.layer(donut, labels, center_label, center_caption)
         .properties(height=340)
     )
-    return chart
 
 
 st.set_page_config(page_title="Relatório de Mesclagens", layout="wide")
