@@ -158,17 +158,17 @@ def make_comparison_data(rows):
     return comparison[comparison["motivo"].isin(top_reasons)]
 
 
-def conversation_url(app_id, conversation_id):
-    if not app_id or not conversation_id:
+def conversation_url(app_id, admin_id, conversation_id):
+    if not app_id or not admin_id or not conversation_id:
         return ""
     return (
         "https://app.intercom.com/a/inbox/"
-        f"{quote(app_id, safe='')}/inbox/inbox/all/conversation/"
+        f"{quote(app_id, safe='')}/inbox/admin/{quote(admin_id, safe='')}/conversation/"
         f"{quote(str(conversation_id), safe='')}"
     )
 
 
-def make_conversation_table(rows, app_id):
+def make_conversation_table(rows, app_id, admin_id):
     columns = {
         "mesclada_em_utc": "Mesclada em (UTC)",
         "id_secundaria_mesclada": "ID da conversa secundária",
@@ -186,9 +186,11 @@ def make_conversation_table(rows, app_id):
         [
             {
                 column: (
-                    conversation_url(app_id, row.get("id_secundaria_mesclada"))
+                    conversation_url(
+                        app_id, admin_id, row.get("id_secundaria_mesclada")
+                    )
                     if column == "link_secundaria"
-                    else conversation_url(app_id, row.get("id_principal"))
+                    else conversation_url(app_id, admin_id, row.get("id_principal"))
                     if column == "link_principal"
                     else row.get(column, "")
                 )
@@ -248,6 +250,7 @@ with st.sidebar:
     st.header("Filtros")
     token = configured_value("INTERCOM_TOKEN")
     intercom_app_id = configured_value("INTERCOM_APP_ID")
+    intercom_admin_id = configured_value("INTERCOM_ADMIN_ID")
     default_end = date.today()
     default_start = default_end - timedelta(days=30)
     selected_dates = st.date_input(
@@ -267,14 +270,14 @@ if start_date > end_date:
     st.error("A data inicial não pode ser posterior à data final.")
     st.stop()
 
-if not token and not CSV_PATH.exists():
-    st.error(
-        "Credenciais não configuradas. Adicione INTERCOM_TOKEN e INTERCOM_APP_ID "
-        "em Settings > Secrets no Streamlit."
-    )
-    st.stop()
+if update_report:
+    if not token and not CSV_PATH.exists():
+        st.error(
+            "Credenciais não configuradas. Adicione INTERCOM_TOKEN, INTERCOM_APP_ID "
+            "e INTERCOM_ADMIN_ID em Settings > Secrets no Streamlit."
+        )
+        st.stop()
 
-if update_report or "report_rows" not in st.session_state:
     try:
         if token:
             since_timestamp, until_timestamp = local_day_bounds(start_date, end_date)
@@ -292,17 +295,20 @@ if update_report or "report_rows" not in st.session_state:
         st.error(f"Falha ao consultar a API do Intercom: {error}")
         st.stop()
 
+if "report_rows" not in st.session_state:
+    st.info("Selecione o período e clique em **Atualizar relatório** para pesquisar.")
+    st.stop()
+
 rows = st.session_state["report_rows"]
 loaded_period = st.session_state.get("report_period")
 if loaded_period != (start_date, end_date):
-    if token:
-        st.info("Clique em **Atualizar relatório** para consultar o período selecionado.")
-        st.stop()
-    else:
-        rows = filter_csv_rows(start_date, end_date)
+    st.info(
+        "O período selecionado mudou. Clique em **Atualizar relatório** para pesquisar "
+        "esse período. Abaixo continuam exibidos os últimos resultados carregados."
+    )
 
 if not rows:
-    st.info("Nenhuma mesclagem encontrada no período selecionado.")
+    st.info("Nenhuma mesclagem encontrada no último relatório carregado.")
     st.caption(f"Fonte dos dados: {st.session_state.get('report_source', 'CSV local')}.")
     st.stop()
 
@@ -326,17 +332,20 @@ col2.metric(
 )
 col3.metric(
     "Período carregado",
-    f"{start_date.strftime('%d/%m/%Y')} a {end_date.strftime('%d/%m/%Y')}",
+    f"{loaded_period[0].strftime('%d/%m/%Y')} a {loaded_period[1].strftime('%d/%m/%Y')}",
 )
 
-conversation_table = make_conversation_table(rows, intercom_app_id)
+conversation_table = make_conversation_table(
+    rows, intercom_app_id, intercom_admin_id
+)
 st.subheader("Conversas localizadas")
 st.caption(
     "A secundária é a conversa mesclada; a principal é a conversa que permaneceu."
 )
-if not intercom_app_id:
+if not intercom_app_id or not intercom_admin_id:
     st.info(
-        "Informe o ID do workspace Intercom na barra lateral para habilitar os links."
+        "Configure INTERCOM_APP_ID e INTERCOM_ADMIN_ID nos Secrets do Streamlit "
+        "para habilitar os links."
     )
 st.dataframe(
     conversation_table,

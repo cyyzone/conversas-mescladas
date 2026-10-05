@@ -18,6 +18,7 @@ Para consultar a API, configure os valores no arquivo local
 ```toml
 INTERCOM_TOKEN = "seu-token"
 INTERCOM_APP_ID = "id-do-workspace"
+INTERCOM_ADMIN_ID = "id-do-admin"
 ```
 
 O arquivo de Secrets e o CSV local são ignorados pelo Git. O token não é
@@ -33,7 +34,12 @@ solicitado na interface do dashboard. Sem credenciais, o app pode carregar
    ```toml
    INTERCOM_TOKEN = "seu-token"
    INTERCOM_APP_ID = "id-do-workspace"
+   INTERCOM_ADMIN_ID = "id-do-admin"
    ```
 
 O token e o ID do workspace são lidos dos Secrets do Streamlit; não são
-exibidos nem solicitados na página.
+exibidos nem solicitados na página. O ID do admin também é usado para formar os
+links das conversas no formato `/inbox/admin/{admin_id}/conversation/{conversation_id}`.
+
+A consulta só é executada quando **Atualizar relatório** é clicado. Alterar o
+período não inicia uma busca automaticamente.
