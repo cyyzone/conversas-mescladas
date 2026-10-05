@@ -72,6 +72,13 @@ def list_conversations(
                     "stage": "list",
                     "message": f"Consultando página {page_number + 1} da API...",
                     "progress": None,
+                    "downloaded": len(conversations),
+                    "total": total_count,
+                    "remaining": (
+                        max(total_count - len(conversations), 0)
+                        if total_count is not None
+                        else None
+                    ),
                 }
             )
         filters = []
@@ -133,6 +140,13 @@ def list_conversations(
                         f"{total_message} conversas{count_note}."
                     ),
                     "progress": progress,
+                    "downloaded": len(conversations),
+                    "total": total_count,
+                    "remaining": (
+                        max(total_count - len(conversations), 0)
+                        if total_count is not None
+                        else None
+                    ),
                 }
             )
         next_page = (result.get("pages") or {}).get("next") or {}
@@ -147,6 +161,13 @@ def list_conversations(
                             "conversas recebidas da API."
                         ),
                         "progress": 0.15,
+                        "downloaded": len(conversations),
+                        "total": total_count,
+                        "remaining": (
+                            max(total_count - len(conversations), 0)
+                            if total_count is not None
+                            else None
+                        ),
                     }
                 )
             return conversations
@@ -196,11 +217,14 @@ def is_merged_secondary(summary):
 def build_report(
     token, since_timestamp=None, until_timestamp=None, progress_callback=None
 ):
-    def report_progress(stage, message, progress=None):
+    def report_progress(stage, message, progress=None, **metadata):
         if progress_callback:
-            progress_callback(
-                {"stage": stage, "message": message, "progress": progress}
-            )
+            progress_callback({
+                "stage": stage,
+                "message": message,
+                "progress": progress,
+                **metadata,
+            })
 
     search_since_timestamp = (
         max(0, since_timestamp - PRIMARY_UPDATE_GRACE_SECONDS)
@@ -254,6 +278,9 @@ def build_report(
         report_progress(
             stage,
             f"Solicitando detalhes de {len(missing_ids)} conversas {stage_label}...",
+            downloaded=0,
+            total=len(missing_ids),
+            remaining=len(missing_ids),
         )
 
         def fetch_detail(conversation_id):
@@ -285,6 +312,9 @@ def build_report(
                     f"Detalhes de {stage_label} carregados: "
                     f"{completed} de {len(futures)}.",
                     progress,
+                    downloaded=completed,
+                    total=len(futures),
+                    remaining=len(futures) - completed,
                 )
 
     def event_is_in_range(event_time):

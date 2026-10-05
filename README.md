@@ -49,3 +49,7 @@ analisadas, os pares localizados, uma barra de progresso e uma única mensagem
 de status, substituída a cada etapa e exibida no horário de Brasília. Quando a
 API não informa o total de conversas, o painel mostra a contagem recebida por
 página e não inventa uma porcentagem para essa fase.
+
+Nas etapas que informam o total, o status também mostra quantas conversas foram
+baixadas e quantas ainda faltam. As abas de resumo, motivos por atributo e
+comparação aparecem acima da tabela de conversas localizadas.

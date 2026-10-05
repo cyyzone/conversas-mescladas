@@ -293,6 +293,17 @@ with st.expander("Andamento da consulta", expanded=update_report):
 
 def on_report_progress(event):
     message = event["message"]
+    downloaded = event.get("downloaded")
+    total_to_download = event.get("total")
+    remaining = event.get("remaining")
+    if total_to_download is not None:
+        downloaded_text = f"{downloaded:,}".replace(",", ".")
+        total_text = f"{total_to_download:,}".replace(",", ".")
+        remaining_text = f"{remaining:,}".replace(",", ".")
+        message = (
+            f"{message} Baixadas: {downloaded_text} de {total_text}; "
+            f"faltam {remaining_text}."
+        )
     timestamp = datetime.now(REPORT_TIMEZONE).strftime("%H:%M:%S")
     status_message = f"{timestamp} — {message}"
     st.session_state["report_progress_status"] = status_message
@@ -429,40 +440,6 @@ col3.metric(
     f"{loaded_period[0].strftime('%d/%m/%Y')} a {loaded_period[1].strftime('%d/%m/%Y')}",
 )
 
-conversation_table = make_conversation_table(
-    rows, intercom_app_id, intercom_admin_id
-)
-st.subheader("Conversas localizadas")
-st.caption(
-    "A secundária é a conversa mesclada; a principal é a conversa que permaneceu."
-)
-if not intercom_app_id or not intercom_admin_id:
-    st.info(
-        "Configure INTERCOM_APP_ID e INTERCOM_ADMIN_ID nos Secrets do Streamlit "
-        "para habilitar os links."
-    )
-st.dataframe(
-    conversation_table,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "ID da conversa secundária": st.column_config.LinkColumn(
-            "ID da conversa secundária",
-            display_text=r".*/conversation/([^/?]+)$",
-        ),
-        "ID da conversa principal": st.column_config.LinkColumn(
-            "ID da conversa principal",
-            display_text=r".*/conversation/([^/?]+)$",
-        ),
-    },
-)
-st.download_button(
-    "Exportar conversas para Excel",
-    data=make_excel_file(conversation_table),
-    file_name=f"conversas_mescladas_{start_date:%Y%m%d}_{end_date:%Y%m%d}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
-
 overview_tab, attributes_tab, comparison_tab = st.tabs(
     ["Resumo", "Motivos por atributo", "Comparação"]
 )
@@ -565,6 +542,40 @@ with comparison_tab:
         st.caption(
             "A comparação usa percentual dentro de cada atributo, além da quantidade no detalhe ao passar o cursor."
         )
+
+conversation_table = make_conversation_table(
+    rows, intercom_app_id, intercom_admin_id
+)
+st.subheader("Conversas localizadas")
+st.caption(
+    "A secundária é a conversa mesclada; a principal é a conversa que permaneceu."
+)
+if not intercom_app_id or not intercom_admin_id:
+    st.info(
+        "Configure INTERCOM_APP_ID e INTERCOM_ADMIN_ID nos Secrets do Streamlit "
+        "para habilitar os links."
+    )
+st.dataframe(
+    conversation_table,
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "ID da conversa secundária": st.column_config.LinkColumn(
+            "ID da conversa secundária",
+            display_text=r".*/conversation/([^/?]+)$",
+        ),
+        "ID da conversa principal": st.column_config.LinkColumn(
+            "ID da conversa principal",
+            display_text=r".*/conversation/([^/?]+)$",
+        ),
+    },
+)
+st.download_button(
+    "Exportar conversas para Excel",
+    data=make_excel_file(conversation_table),
+    file_name=f"conversas_mescladas_{start_date:%Y%m%d}_{end_date:%Y%m%d}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
 
 st.caption(
     f"Fonte: {st.session_state.get('report_source', 'dados carregados')}."
