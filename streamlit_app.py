@@ -172,13 +172,9 @@ def make_conversation_table(rows, app_id, admin_id):
     columns = {
         "mesclada_em_utc": "Mesclada em (UTC)",
         "id_secundaria_mesclada": "ID da conversa secundária",
-        "titulo_secundaria": "Conversa secundária",
-        "link_secundaria": "Link da secundária",
         "motivo_contato_secundaria": "Motivo da secundária",
         "status_secundaria": "Status da secundária",
         "id_principal": "ID da conversa principal",
-        "titulo_principal": "Conversa principal",
-        "link_principal": "Link da principal",
         "motivo_contato_principal": "Motivo da principal",
         "status_principal": "Status da principal",
     }
@@ -189,9 +185,11 @@ def make_conversation_table(rows, app_id, admin_id):
                     conversation_url(
                         app_id, admin_id, row.get("id_secundaria_mesclada")
                     )
-                    if column == "link_secundaria"
-                    else conversation_url(app_id, admin_id, row.get("id_principal"))
-                    if column == "link_principal"
+                    if column == "id_secundaria_mesclada"
+                    else conversation_url(
+                        app_id, admin_id, row.get("id_principal")
+                    )
+                    if column == "id_principal"
                     else row.get(column, "")
                 )
                 for column in columns
@@ -211,12 +209,17 @@ def make_excel_file(table):
         worksheet.auto_filter.ref = worksheet.dimensions
         for cell in worksheet[1]:
             cell.font = Font(bold=True)
-        for column_name in ("Link da secundária", "Link da principal"):
+        for column_name in (
+            "ID da conversa secundária",
+            "ID da conversa principal",
+        ):
             column_index = table.columns.get_loc(column_name) + 1
             for row_index in range(2, len(table) + 2):
                 cell = worksheet.cell(row=row_index, column=column_index)
                 if cell.value:
-                    cell.hyperlink = cell.value
+                    url = str(cell.value)
+                    cell.value = url.rsplit("/", 1)[-1]
+                    cell.hyperlink = url
                     cell.style = "Hyperlink"
     return output.getvalue()
 
@@ -352,11 +355,13 @@ st.dataframe(
     width="stretch",
     hide_index=True,
     column_config={
-        "Link da secundária": st.column_config.LinkColumn(
-            "Link da secundária", display_text="Abrir no Intercom"
+        "ID da conversa secundária": st.column_config.LinkColumn(
+            "ID da conversa secundária",
+            display_text=r".*/conversation/([^/?]+)$",
         ),
-        "Link da principal": st.column_config.LinkColumn(
-            "Link da principal", display_text="Abrir no Intercom"
+        "ID da conversa principal": st.column_config.LinkColumn(
+            "ID da conversa principal",
+            display_text=r".*/conversation/([^/?]+)$",
         ),
     },
 )
