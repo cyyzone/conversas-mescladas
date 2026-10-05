@@ -45,6 +45,7 @@ A consulta só é executada quando **Atualizar relatório** é clicado. Alterar 
 período não inicia uma busca automaticamente.
 
 Durante a consulta, o painel mostra a etapa atual, as conversas e candidatas
-analisadas, os pares localizados, uma barra de progresso e o histórico das
-últimas etapas. Quando a API não informa o total de conversas, o painel mostra
-a contagem recebida por página e não inventa uma porcentagem para essa fase.
+analisadas, os pares localizados, uma barra de progresso e uma única mensagem
+de status, substituída a cada etapa e exibida no horário de Brasília. Quando a
+API não informa o total de conversas, o painel mostra a contagem recebida por
+página e não inventa uma porcentagem para essa fase.

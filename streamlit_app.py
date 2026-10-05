@@ -273,7 +273,6 @@ if start_date > end_date:
     st.error("A data inicial não pode ser posterior à data final.")
     st.stop()
 
-progress_log = st.session_state.setdefault("report_progress_log", [])
 progress_value = st.session_state.get("report_progress", 0.0)
 with st.expander("Andamento da consulta", expanded=update_report):
     progress_bar = st.progress(
@@ -284,20 +283,19 @@ with st.expander("Andamento da consulta", expanded=update_report):
         ),
     )
     progress_status = st.empty()
-    progress_history = st.empty()
-    if progress_log:
-        progress_history.markdown(
-            "\n".join(f"- {entry}" for entry in progress_log[-20:])
+    progress_status.info(
+        st.session_state.get(
+            "report_progress_status",
+            "Aguardando clique em Atualizar relatório.",
         )
-    else:
-        progress_history.caption("O histórico da consulta aparecerá aqui.")
+    )
 
 
 def on_report_progress(event):
     message = event["message"]
-    progress_log = st.session_state["report_progress_log"]
-    progress_log.append(f"{datetime.now():%H:%M:%S} — {message}")
-    del progress_log[:-20]
+    timestamp = datetime.now(REPORT_TIMEZONE).strftime("%H:%M:%S")
+    status_message = f"{timestamp} — {message}"
+    st.session_state["report_progress_status"] = status_message
 
     progress = event.get("progress")
     if progress is not None:
@@ -313,12 +311,9 @@ def on_report_progress(event):
     else:
         progress_bar.progress(
             st.session_state.get("report_progress", 0.0),
-            text=message,
+            text=status_message,
         )
-    progress_status.info(message)
-    progress_history.markdown(
-        "\n".join(f"- {entry}" for entry in progress_log)
-    )
+    progress_status.info(status_message)
 
 
 if update_report:
@@ -331,10 +326,12 @@ if update_report:
 
     st.session_state["report_progress"] = 0.0
     st.session_state["report_progress_text"] = "Iniciando a consulta..."
-    st.session_state["report_progress_log"] = []
+    start_message = (
+        f"{datetime.now(REPORT_TIMEZONE):%H:%M:%S} — Iniciando a consulta."
+    )
+    st.session_state["report_progress_status"] = start_message
     progress_bar.progress(0.0, text="Iniciando a consulta...")
-    progress_status.info("Iniciando a consulta.")
-    progress_history.caption("Preparando a busca...")
+    progress_status.info(start_message)
 
     try:
         if token:
@@ -372,21 +369,24 @@ if update_report:
             f"100% — Consulta concluída: "
             f"{len(st.session_state['report_rows'])} pares localizados."
         )
+        complete_message = (
+            f"{datetime.now(REPORT_TIMEZONE):%H:%M:%S} — "
+            f"{len(st.session_state['report_rows'])} pares localizados."
+        )
+        st.session_state["report_progress_status"] = complete_message
         progress_bar.progress(
             1.0,
             text=st.session_state["report_progress_text"],
         )
-        progress_status.success(st.session_state["report_progress_text"])
+        progress_status.success(complete_message)
     except RequestException as error:
         error_message = f"Falha ao consultar a API do Intercom: {error}"
         st.session_state["report_progress_text"] = error_message
-        progress_status.error(error_message)
-        progress_log = st.session_state["report_progress_log"]
-        progress_log.append(f"{datetime.now():%H:%M:%S} — {error_message}")
-        del progress_log[:-20]
-        progress_history.markdown(
-            "\n".join(f"- {entry}" for entry in progress_log[-20:])
+        status_message = (
+            f"{datetime.now(REPORT_TIMEZONE):%H:%M:%S} — {error_message}"
         )
+        st.session_state["report_progress_status"] = status_message
+        progress_status.error(status_message)
         st.stop()
 
 if "report_rows" not in st.session_state:
